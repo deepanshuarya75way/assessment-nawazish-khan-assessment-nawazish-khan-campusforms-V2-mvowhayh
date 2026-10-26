@@ -1,12 +1,13 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
+import { paginationOptsValidator } from 'convex/server';
 import { getAuthUserId } from '@convex-dev/auth/server';
 import type { Id } from './_generated/dataModel';
 import { photoIds, ownedForm, requireUserId, toResponse } from './lib';
 import {
   FLOOD_LIMIT,
-  FLOOD_WINDOW_MS,
-  PHOTO_MAX_BYTES,
+  FLOOD_WINDOW_MS,                 
+  PHOTO_MAX_BYTES,                
   PHOTO_TYPES,
   REF_PATTERN,
   checkAnswers,
@@ -16,6 +17,13 @@ import {
 import { responseStatusValidator } from './schema';
 
 const NOTE_MAX = 280;
+async function hashDevice(formId:string, deviceId:string){
+  const bytes = new TextEncoder().encode('${formId}:${deviceId}');
+  const digest = await crypto.subtle.digest('SHA-256',bytes);
+  const arr =  Array.from(new Uint8Array(digest));
+  const hex =arr.map((b) => b.toString(16).padStart(2,'0'));
+  return hex.join('');
+}
 
 /**
  * Public: file a response. This one mutation does everything the old Postgres
@@ -28,6 +36,7 @@ export const submit = mutation({
     ref: v.string(),
     respondentName: v.union(v.string(), v.null()),
     respondentEmail: v.union(v.string(), v.null()),
+    deviceId: v.string(),
     // Checked by hand so a malformed payload gets a sentence, not a validator dump.
     answers: v.any(),
   },
@@ -48,10 +57,18 @@ export const submit = mutation({
     if (form.maxResponses != null && form.responseCount >= form.maxResponses) {
       fail('This form is full');
     }
-
+   if(!/^[0-9a-f-]{36}$/.test(args.deviceId)) fail('Missing device identifier');
+   const deviceHash = await hashDevice(form._id, args.deviceId);
+   const already = await ctx.db
+   .query('submissionLocks')
+   .withIndex('by_form_device',(q) => q.eq('formId',form._id).eq('deviceHash', deviceHash) )
+   .first();
+   if (already!== null ) {
+    fail('You have already submitted this form .Each device can respond to only once.');
+   }
     // Responses carry no IP and no submitter, by design, so the only thing
     // countable is the form itself. ~30 a minute stops a script without
-    // touching a lecture hall filling the same form at once.
+    // touching a lecture hall filling the same form at once. 
     const recent = await ctx.db
       .query('responses')
       .withIndex('by_form', (q) =>
@@ -99,6 +116,7 @@ export const submit = mutation({
       status: 'new',
       publicNote: '',
     });
+   await ctx.db.insert('submissionLocks',{formId: form._id, deviceHash});
     await ctx.db.patch('forms', form._id, { responseCount: form.responseCount + 1 });
     return ref;
   },
@@ -158,6 +176,31 @@ export const listForForm = query({
   },
 });
 
+export const listPage = query({
+  args: {
+    formId: v.string(),
+    status: v.optional(responseStatusValidator),
+    paginationOpts: paginationOptsValidator,
+  },
+handler: async (ctx, {formId, status, paginationOpts}) => {
+  const form = await ownedForm(ctx,formId);
+  if (form==null) return {page: [],isDone: true, continueCursor:''};
+  const result = status 
+  ? await ctx.db
+  .query('responses')
+  .withIndex('by_form_status', (q) =>q.eq('formId',form._id).eq('status', status))
+  .order('desc')
+  .paginate(paginationOpts)
+  : await ctx.db 
+  .query('responses')
+   .withIndex('by_form_status', (q) =>q.eq('formId',form._id) )
+     .order('desc')
+       .paginate(paginationOpts);
+       return{...result, page: result.page.map(toResponse)};
+},
+
+});
+ 
 /** Owner: newest responses across every form they own. */
 export const listRecent = query({
   args: { limit: v.optional(v.number()) },

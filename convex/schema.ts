@@ -9,7 +9,7 @@ import { authTables } from '@convex-dev/auth/server';
  *
  * There is no `submittedBy` or IP on `responses`, on purpose: anonymity is
  * "the data was never stored", and `responses.submit` is the only writer.
- */
+ */ 
 
 export const categoryValidator = v.union(
   v.literal('hostel'),
@@ -84,9 +84,15 @@ export default defineSchema({
     answers: v.record(v.string(), v.union(v.string(), v.number(), v.array(v.string()))),
     status: responseStatusValidator,
     publicNote: v.string(),
-  })
+  })                                          
     .index('by_form', ['formId'])
+    .index('by_form_status',['formId','status'])
     .index('by_ref', ['ref']),
+
+    submissionLocks:defineTable({
+      formId: v.id('forms'),
+      deviceHash: v.string(),
+    }).index('by_form_device',['formId','deviceHash']),
 
   /** Emails that may sign in as organizers. Managed with admin:allowOrganizer. */
   allowedOrganizers: defineTable({
