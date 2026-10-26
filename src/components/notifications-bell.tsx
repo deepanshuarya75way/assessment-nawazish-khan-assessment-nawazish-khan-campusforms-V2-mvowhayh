@@ -1,0 +1,170 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
+import Link from 'next/link';
+import { Bell } from 'lucide-react';
+import { useAuth } from '@/components/auth-provider';
+import { avatarColor, cn, initials, timeAgo } from '@/lib/utils';
+import type { FormResponse } from '@/lib/types';
+
+const SEEN_KEY = 'campusforms-notifs-seen-v1';
+
+/** Per-user "last time I looked at the bell" marker. */
+function lastSeenAt(userId: string): number {
+  try {
+    const raw = localStorage.getItem(SEEN_KEY);
+    const all: unknown = raw ? JSON.parse(raw) : {};
+    const v = (all as Record<string, string>)[userId];
+    return v ? new Date(v).getTime() : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function markAllSeen(userId: string): void {
+  try {
+    const raw = localStorage.getItem(SEEN_KEY);
+    const all: unknown = raw ? JSON.parse(raw) : {};
+    (all as Record<string, string>)[userId] = new Date().toISOString();
+    localStorage.setItem(SEEN_KEY, JSON.stringify(all));
+  } catch {
+    // Ignore — worst case the badge keeps counting.
+  }
+}
+
+/**
+ * The dashboard's doorbell: an unseen-response count plus the recent list.
+ * Deliberately in-app only — no email service, no keys — and the "seen"
+ * marker lives in localStorage, so it's per browser like everything else
+ * client-side.
+ */
+export function NotificationsBell() {
+  const { user, ready, configured } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [seenOverride, setSeenOverride] = useState<number | null>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+
+  // Live queries: a new response shows up without the old 60-second poll.
+  const live = ready && user ? {} : 'skip';
+  const recent = useQuery(api.responses.listRecent, ready && user ? { limit: 15 } : 'skip');
+  const forms = useQuery(api.forms.listMine, live);
+  const responses: FormResponse[] = useMemo(() => recent ?? [], [recent]);
+  const titles = useMemo(() => new Map((forms ?? []).map((f) => [f.id, f.title])), [forms]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  if (!configured || !ready || !user) return null;
+
+  const seen = seenOverride ?? lastSeenAt(user.id);
+  const unread = responses.filter((r) => new Date(r.submittedAt).getTime() > seen).length;
+
+  return (
+    <div className="relative" ref={wrap}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={unread > 0 ? `Notifications — ${unread} unseen` : 'Notifications'}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={cn(
+          'relative grid size-10 place-items-center rounded-lg sm:size-9 text-ink/60 transition outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          open ? 'bg-ink/[0.05] text-ink' : 'hover:bg-ink/[0.05] hover:text-ink'
+        )}
+      >
+        <Bell className="size-[18px]" />
+        {unread > 0 ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-accent-solid px-1 text-[10px] font-bold leading-4 text-on-accent"
+            aria-hidden
+          >
+            {unread > 9 ? '9+' : unread}
+          </span>
+        ) : null}
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          className="animate-pop fixed inset-x-4 top-[4.25rem] z-50 rounded-lg border border-ink/10 bg-card p-1.5 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-80"
+        >
+          <div className="flex items-center justify-between px-3 py-2">
+            <p className="text-[13px] font-semibold">Recent responses</p>
+            {unread > 0 ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  markAllSeen(user.id);
+                  setSeenOverride(Date.now());
+                }}
+                className="inline-flex min-h-10 items-center px-1 text-[13px] font-medium text-ballpoint-700 transition hover:text-ballpoint-800"
+              >
+                Mark all read
+              </button>
+            ) : null}
+          </div>
+          {responses.length === 0 ? (
+            <p className="px-3 pb-3 pt-1 text-[13px] leading-relaxed text-ink/60">
+              Responses land here the moment students submit.
+            </p>
+          ) : (
+            <ul className="max-h-[min(24rem,calc(100svh-9rem))] overflow-y-auto">
+              {responses.map((r) => {
+                const unseen = new Date(r.submittedAt).getTime() > seen;
+                return (
+                  <li key={r.id}>
+                    <Link
+                      href={`/dashboard/form/${r.formId}`}
+                      onClick={() => setOpen(false)}
+                      className={cn(
+                        'flex min-h-12 items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-ink/[0.05]',
+                        unseen && 'bg-ballpoint-50/60'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'grid size-8 shrink-0 place-items-center rounded-full text-[10px] font-bold',
+                          avatarColor(r.respondentName)
+                        )}
+                        aria-hidden
+                      >
+                        {initials(r.respondentName)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium">
+                          {r.respondentName ?? 'Anonymous student'}
+                        </span>
+                        <span className="block truncate text-xs text-ink/60">
+                          {titles.get(r.formId) ?? 'A form'}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-ink/60">
+                        {timeAgo(r.submittedAt)}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}

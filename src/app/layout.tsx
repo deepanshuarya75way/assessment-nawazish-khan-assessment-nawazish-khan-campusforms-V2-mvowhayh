@@ -1,0 +1,85 @@
+import type { Metadata } from 'next';
+import { Fraunces, Geist, Geist_Mono } from 'next/font/google';
+import { ToastProvider } from '@/components/ui/toast';
+import { ConvexAuthNextjsServerProvider } from '@convex-dev/auth/nextjs/server';
+import { AuthProvider } from '@/components/auth-provider';
+import { ConvexClientProvider } from '@/components/convex-provider';
+import { isConvexConfigured } from '@/lib/db/env';
+import { ThemeProvider } from '@/components/theme-provider';
+import './globals.css';
+
+const geistSans = Geist({
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
+});
+
+const geistMono = Geist_Mono({
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
+});
+
+const fraunces = Fraunces({
+  variable: '--font-fraunces',
+  subsets: ['latin'],
+  axes: ['opsz'],
+});
+
+export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? 'https://campusforms.vercel.app'
+  ),
+  title: {
+    default: 'CampusForms: forms for university life',
+    template: '%s · CampusForms',
+  },
+  description:
+    'Collect hostel complaints, run event registrations and gather anonymous mess feedback. The form platform built for universities — one link, no sign-in for students.',
+  openGraph: {
+    type: 'website',
+    siteName: 'CampusForms',
+  },
+};
+
+/**
+ * Convex Auth keeps its session in cookies the server reads, so the server
+ * provider has to wrap the client ones. Without a deployment URL there is no
+ * session to read and the app shows its "not connected" state.
+ */
+function ConvexSessionProviders({ children }: { children: React.ReactNode }) {
+  const tree = (
+    <ConvexClientProvider>
+      <AuthProvider>{children}</AuthProvider>
+    </ConvexClientProvider>
+  );
+  return isConvexConfigured() ? (
+    <ConvexAuthNextjsServerProvider>{tree}</ConvexAuthNextjsServerProvider>
+  ) : (
+    tree
+  );
+}
+
+export default function RootLayout({ children }: LayoutProps<'/'>) {
+  return (
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
+    >
+      <head>
+        {/* Sets data-theme and .dark before first paint so the canvas never flashes. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('cf-theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}var r=document.documentElement;r.dataset.theme=t;r.classList.toggle('dark',t==='dark')}catch(e){}})()`,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col font-sans">
+        <ConvexSessionProviders>
+          <ThemeProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </ThemeProvider>
+        </ConvexSessionProviders>
+      </body>
+    </html>
+  );
+}
