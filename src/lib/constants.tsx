@@ -154,5 +154,5 @@ export const RESPONSE_STATUS_META: Record<
 > = {
   new: { label: 'New', chip: 'border-ballpoint-300 bg-ballpoint-50 text-ballpoint-800' },
   'in-progress': { label: 'In progress', chip: 'border-warn-bd bg-warn-bg text-warn-tx' },
-  done: { label: 'Done', chip: 'border-tick/30 bg-tick-soft text-tick' },
+  done: { label: 'Resolved', chip: 'border-tick/30 bg-tick-soft text-tick' },
 };

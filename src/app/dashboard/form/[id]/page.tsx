@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import {usePaginatedQuery} from 'convex/react';
+import {api} from '../../../../../convex/_generated/api';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -73,6 +75,11 @@ export default function FormResultsPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ResponseStatus | 'all'>('all');
+  const paged = usePaginatedQuery( 
+    api.responses.listPage,
+    data?.form ? { formId: params.id, status: statusFilter ==='all' ? undefined: statusFilter} :'skip',
+    { initialNumItems:10}
+  );
   const [confirmDeleteResponse, setConfirmDeleteResponse] = useState<FormResponse | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -97,16 +104,15 @@ export default function FormResultsPage() {
   // looking for "block C" is looking for what the student wrote.
   const visibleResponses = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return formResponses.filter((r) => {
-      if (statusFilter !== 'all' && (r.status ?? 'new') !== statusFilter) return false;
-      if (!q) return true;
+    return paged.results.filter((r)=> {
+      if (!q) return true; 
       if (r.respondentName?.toLowerCase().includes(q)) return true;
       if (r.respondentEmail?.toLowerCase().includes(q)) return true;
       return (form?.questions ?? []).some((question) =>
         answerToText(r.answers[question.id], question).toLowerCase().includes(q)
       );
     });
-  }, [formResponses, query, statusFilter, form?.questions]);
+  }, [paged.results, query, form?.questions]);
 
   // Export follows what's on screen, so the button has to say when that's
   // fewer rows than the form holds.
@@ -530,6 +536,13 @@ export default function FormResultsPage() {
                   />
                 ))}
               </div>
+            )}
+            {paged.status =='CanLoadMore' &&(
+              <div className="mt-5 text-center">
+                <Button variant = "secondary" onClick={()=> paged.loadMore(10)}>
+                  Load more
+                  </Button>
+                  </div>
             )}
           </div>
         )}

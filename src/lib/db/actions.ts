@@ -4,9 +4,10 @@ import { useCallback, useMemo } from 'react';
 import { ConvexError } from 'convex/values';
 import { useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
+import {getDeviceId} from '@/lib/device';
 import type { AnswerValue, FormDefinition, FormStatus, ResponseStatus } from '@/lib/types';
 
-/**
+/** 
  * Writes. Authorization and every business rule live in the Convex functions
  * these call; nothing here is trusted. Convex mutations re-run the live
  * queries that read the same data, so none of these need a "refresh".
@@ -112,7 +113,7 @@ export function useResponseActions() {
       answers: Record<string, AnswerValue>;
       ref?: string;
     }): Promise<string> => {
-      const send = (ref: string) => submit({ ...input, ref });
+      const send = (ref: string) => submit({ ...input, ref , deviceId: getDeviceId() });
       try {
         return await send(input.ref ?? newResponseRef());
       } catch (e) {

@@ -17,6 +17,7 @@ async function world() {
       ref: r,
       respondentName: 'Asha',
       respondentEmail: 'asha@example.test',
+         deviceId: crypto.randomUUID(),
       answers,
     });
   return { t, owner, other, formId, submit };
@@ -104,7 +105,7 @@ describe('owner-only access', () => {
     const { t, owner, other, formId } = await world();
     const storageId = await storeFile(t, 'image/png');
     await t.mutation(api.responses.submit, {
-      formId, ref: ref(), respondentName: null, respondentEmail: null,
+      formId, ref: ref(), respondentName: null, respondentEmail: null, deviceId: crypto.randomUUID(),
       answers: { qf: storageId },
     });
     const [row] = await t.run((ctx) => ctx.db.query('responses').collect());
@@ -179,13 +180,15 @@ describe('form invariants', () => {
     const { t, owner, formId } = await world();
     const storageId = await storeFile(t, 'image/png');
     await t.mutation(api.responses.submit, {
-      formId, ref: ref(), respondentName: null, respondentEmail: null, answers: { qf: storageId },
+      formId, ref: ref(), respondentName: null, respondentEmail: null, deviceId: crypto.randomUUID(),
+      answers: { qf: storageId },
     });
     await owner.as.mutation(api.forms.remove, { id: formId });
     await t.finishAllScheduledFunctions(() => {});
     expect(await t.run((ctx) => ctx.db.query('responses').collect())).toHaveLength(0);
     expect(await t.run((ctx) => ctx.db.system.get('_storage', storageId))).toBeNull();
-  });
+  }); 
+
 });
 
 describe('organizer requests', () => {

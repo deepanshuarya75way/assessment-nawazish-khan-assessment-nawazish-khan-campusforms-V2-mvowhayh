@@ -18,7 +18,7 @@ import { responseStatusValidator } from './schema';
 
 const NOTE_MAX = 280;
 async function hashDevice(formId:string, deviceId:string){
-  const bytes = new TextEncoder().encode('${formId}:${deviceId}');
+  const bytes = new TextEncoder().encode(`${formId}:${deviceId}`);
   const digest = await crypto.subtle.digest('SHA-256',bytes);
   const arr =  Array.from(new Uint8Array(digest));
   const hex =arr.map((b) => b.toString(16).padStart(2,'0'));
@@ -120,7 +120,7 @@ export const submit = mutation({
     await ctx.db.patch('forms', form._id, { responseCount: form.responseCount + 1 });
     return ref;
   },
-});
+});   
 
 /** Public, open forms only: a one-time URL to POST one photo to. */
 export const generateUploadUrl = mutation({

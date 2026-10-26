@@ -16,6 +16,7 @@ async function setup(extra: Parameters<typeof insertForm>[2] = {}) {
       ref: ref(),
       respondentName: 'Asha',
       respondentEmail: 'asha@example.test',
+      deviceId: crypto.randomUUID(),
       answers,
       ...over,
     });
